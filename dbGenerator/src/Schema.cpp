@@ -240,13 +240,13 @@ static RETCODE GenerateObectFooter(const OBJECT_SCHEMA& object, std::ofstream& h
 static RETCODE GenerateHeader(const OBJECT_SCHEMA& object, const std::string& outputDirectory)
 {
     RETCODE retcode = RTN_OK;
-    std::string schemaFilePath = outputDirectory + object.objectName + CONSTANTS::SCHEMA_EXT;
+    std::string outputPath = outputDirectory + object.objectName + CONSTANTS::HEADER_EXT;
 
-    std::ofstream headerFile(schemaFilePath);
+    std::ofstream headerFile(outputPath);
     if(!headerFile)
     {
         LOG_FATAL("Could not create: ",
-            schemaFilePath,
+            outputPath,
             " due to error: ",
             ErrorString(errno));
 
@@ -270,9 +270,22 @@ static RETCODE GenerateHeader(const OBJECT_SCHEMA& object, const std::string& ou
 
     retcode = GenerateObectFooter(object, headerFile);
 
-    LOG_INFO("Generated: ", schemaFilePath);
+    LOG_INFO("Generated: ", outputPath);
 
     return retcode;
+}
+
+size_t CalculateByteBounds(const OBJECT_SCHEMA& object)
+{
+    size_t extraBytes = object.objectSize % CONSTANTS::WORD_SIZE;
+
+    // If this field doesn't end on a word boundary then we will need to add padding
+    if(extraBytes)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& outputPath, bool isStrict)

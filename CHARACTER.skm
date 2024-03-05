@@ -1,7 +1,0 @@
-// GENERATED: DO NOT MODIFY!!
-#ifndef CHARACTER__HH
-#define CHARACTER__HH
-
-
-struct CHARACTER
-{

@@ -2,4 +2,4 @@
 2 CHARACTER 105
     0 NAME c 24
     1 AGE i 1
-    2 GLASSES b 1
+    2 GLASSES ? 1
