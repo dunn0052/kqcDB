@@ -148,14 +148,14 @@
             }
             catch(std::invalid_argument const& except)
             {
-                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " because it could not be converted to an integer!");
+                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " due to error: ", except.what());
                 m_InUse = false;
                 return false;
 
             }
             catch(std::out_of_range const& except)
             {
-                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " because the number is too large!");
+                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " due to error: ", except.what());
                 m_InUse = false;
                 return false;
             }

@@ -8,14 +8,26 @@
 #include <iomanip>
 #include <string.h>
 #include <sys/types.h>
-#include <unistd.h>
+//#include <unistd.h>
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <processthreadsapi.h>
+#else
 #include <sys/syscall.h>
+#endif
 #include <iostream>
+
+#include <common/UtilityFunctions.hh>
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 // Template creates compile time arguments
-#define LOG_TEMPLATE( LEVEL, ... ) Logger::Instance().Log(std::cout, Logger::LEVEL, #LEVEL, getpid(), static_cast<pid_t>(syscall(__NR_gettid)), __FILENAME__, __LINE__, ##__VA_ARGS__ )
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define LOG_TEMPLATE( LEVEL, ... ) Logger::Instance().Log(std::cout, Logger::LEVEL, #LEVEL, GetCurrentProcessId(), GetCurrentThreadId(), __FILENAME__, __LINE__, ##__VA_ARGS__ )
+#else
+#define LOG_TEMPLATE( LEVEL, ... ) Logger::Instance().Log(std::cout, Logger::LEVEL, #LEVEL, getpid(), syscall(__NR_gettid), __FILENAME__, __LINE__, ##__VA_ARGS__ )
+#endif
 #define LOG_DEBUG( ... ) LOG_TEMPLATE( DEBUG, ##__VA_ARGS__ )
 #define LOG_INFO( ... ) LOG_TEMPLATE( INFO, ##__VA_ARGS__ )
 #define LOG_WARN( ... ) LOG_TEMPLATE( WARN, ##__VA_ARGS__ )
@@ -33,7 +45,7 @@ public:
         static constexpr LogLevel MAX_LOG_LEVEL = INFO;
 
         template<typename Stream, typename... RestOfArgs>
-        Stream& Log(Stream& stream, LogLevel level, const char* debugLevel, pid_t processID, pid_t threadID, const char* fileName, int lineNum, const RestOfArgs& ... args)
+        Stream& Log(Stream& stream, LogLevel level, const char* debugLevel, int processID, int threadID, const char* fileName, int lineNum, const RestOfArgs& ... args)
         {
             /* Internal string stream used to ensure thread safety when printing.
              * It is passed through to collect the arguments into a single string,
@@ -53,22 +65,32 @@ public:
 private:
 
         template<typename Stream, typename... RestOfArgs>
-        Stream& PrependLog(Stream& stream, std::stringstream& internalStream, LogLevel level, const char* debugLevel, pid_t processID, pid_t threadID, const char* fileName, int lineNum, const RestOfArgs& ... args)
+        Stream& PrependLog(Stream& stream, std::stringstream& internalStream, LogLevel level, const char* debugLevel, int processID, int threadID, const char* fileName, int lineNum, const RestOfArgs& ... args)
         {
             if(INFO != level)
             {
                 std::chrono::system_clock::time_point systemTime = std::chrono::system_clock::now();
                 std::chrono::microseconds microSeconds = std::chrono::duration_cast<std::chrono::microseconds>(systemTime.time_since_epoch()) % 1000000;
                 time_t time = std::chrono::system_clock::to_time_t(systemTime);
+                std::tm convertedTime = { 0 };
 
-                std::tm convertedTime = *localtime(&time);
-
-                // [weekday mon day year hour:min:sec.usec]
-                internalStream
-                    << "["
-                    << std::put_time(&convertedTime, "%a %b %d %Y %H:%M:%S.")
-                    << std::setfill('0') << std::setw(6) << microSeconds.count()
-                    << "]";
+                errno_t error = localtime_s(&convertedTime, &time);
+                if(!error)
+                {
+                    // [weekday mon day year hour:min:sec.usec]
+                    internalStream
+                        << "["
+                        << std::put_time(&convertedTime, "%a %b %d %Y %H:%M:%S.")
+                        << std::setfill('0') << std::setw(6) << microSeconds.count()
+                        << "]";
+                }
+                else
+                {
+                    internalStream
+                        << "[Time error: "
+                        << ErrorString(error)
+                        << "]";
+                }
 
                 // <filename:linenum>
                 internalStream

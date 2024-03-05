@@ -3,4 +3,11 @@ bin/
 CMakeFiles/
 CMakeCache.txt
 *.CMakeCache
+*.cmake
+*.dir
 Makefile
+
+*.vcxproj*
+*.sln
+x64/
+lib/
