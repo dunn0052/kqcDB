@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <processthreadsapi.h>
 #else
+#include <unistd.h>
 #include <sys/syscall.h>
 #endif
 #include <iostream>
@@ -74,6 +75,7 @@ private:
                 time_t time = std::chrono::system_clock::to_time_t(systemTime);
                 std::tm convertedTime = { 0 };
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                 errno_t error = localtime_s(&convertedTime, &time);
                 if(!error)
                 {
@@ -91,7 +93,15 @@ private:
                         << ErrorString(error)
                         << "]";
                 }
-
+#else
+                convertedTime = *localtime(&time);
+                // [weekday mon day year hour:min:sec.usec]
+                internalStream
+                    << "["
+                    << std::put_time(&convertedTime, "%a %b %d %Y %H:%M:%S.")
+                    << std::setfill('0') << std::setw(6) << microSeconds.count()
+                    << "]";
+#endif
                 // <filename:linenum>
                 internalStream
                     << "{"
