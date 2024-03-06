@@ -3,82 +3,91 @@
 #include <common/Logger.hh>
 #include <common/Constants.hh>
 #include <common/UtilityFunctions.hh>
+#include <common/DBHeader.hh>
 
+#include <fcntl.h>
 #include <fstream>
 
 static RETCODE ParseField(std::istringstream& lineStream, FIELD_SCHEMA& out_field)
 {
-    FIELD_SCHEMA field;
-    lineStream >> field;
+    lineStream >> out_field;
     if(lineStream.fail())
     {
         return RTN_BAD_ARG;
     }
 
-    switch(static_cast<FIELD_TYPE>(field.fieldType))
+    switch(static_cast<FIELD_TYPE>(out_field.fieldType))
     {
         case FIELD_TYPE::INT:
         {
-            field.fieldSize = sizeof(int);
+            out_field.fieldSize = sizeof(int);
+            out_field.fieldAlignment = alignof(int);
             break;
         }
         case FIELD_TYPE::UINT:
         {
-            field.fieldSize = sizeof(unsigned int);
+            out_field.fieldSize = sizeof(unsigned int);
+            out_field.fieldAlignment = alignof(unsigned int);
             break;
         }
         case FIELD_TYPE::LONG:
         {
-            field.fieldSize = sizeof(long);
+            out_field.fieldSize = sizeof(long);
+            out_field.fieldAlignment = alignof(long);
             break;
         }
         case FIELD_TYPE::ULONG:
         {
-            field.fieldSize = sizeof(unsigned long);
+            out_field.fieldSize = sizeof(unsigned long);
+            out_field.fieldAlignment = alignof(unsigned long);
             break;
         }
         case FIELD_TYPE::CHAR:
         {
-            field.fieldSize = sizeof(char);
+            out_field.fieldSize = sizeof(char);
+            out_field.fieldAlignment = alignof(char);
             break;
         }
         case FIELD_TYPE::BYTE:
         {
-            field.fieldSize = sizeof(unsigned char);
+            out_field.fieldSize = sizeof(unsigned char);
+            out_field.fieldAlignment = alignof(unsigned char);
             break;
         }
         case FIELD_TYPE::BOOL:
         {
-            field.fieldSize = sizeof(bool);
+            out_field.fieldSize = sizeof(bool);
+            out_field.fieldAlignment = alignof(bool);
             break;
         }
         case FIELD_TYPE::PADDING:
         {
-            field.fieldSize = sizeof(unsigned char);
+            out_field.fieldSize = sizeof(unsigned char);
+            out_field.fieldAlignment = alignof(unsigned char);
             break;
         }
         default:
         {
             LOG_FATAL("field: ",
-                field.fieldName,
+                out_field.fieldName,
                 " type: ",
-                field.fieldType,
+                out_field.fieldType,
                 " is invalid");
 
             return RTN_BAD_ARG;
         }
     }
 
-    field.fieldSize *= field.numElements;
+    out_field.fieldSize *= out_field.numElements;
 
     LOG_INFO("FIELD NUMBER: ",
-        field.fieldNumber,
+        out_field.fieldNumber,
         " FIELD NAME: ",
-        field.fieldName,
+        out_field.fieldName,
         " FIELD TYPE: ",
-        field.fieldType,
+        out_field.fieldType,
         " NUMBER OF ELEMENTS: ",
-        field.numElements);
+        out_field.numElements);
 
     return RTN_OK;
 }
@@ -237,23 +246,23 @@ static RETCODE GenerateObectFooter(const OBJECT_SCHEMA& object, std::ofstream& h
     return RTN_OK;
 }
 
-static RETCODE GenerateHeader(const OBJECT_SCHEMA& object, const std::string& outputDirectory)
+static RETCODE GenerateHeader(const OBJECT_SCHEMA& object, const std::string& headerOutputDirectory)
 {
     RETCODE retcode = RTN_OK;
-    std::string outputPath = outputDirectory + object.objectName + CONSTANTS::HEADER_EXT;
+    std::string headerFile = headerOutputDirectory + object.objectName + CONSTANTS::HEADER_EXT;
 
-    std::ofstream headerFile(outputPath);
-    if(!headerFile)
+    std::ofstream headerFileStream(headerFile);
+    if(!headerFileStream)
     {
         LOG_FATAL("Could not create: ",
-            outputPath,
+            headerFile,
             " due to error: ",
             ErrorString(errno));
 
         return RTN_NOT_FOUND;
     }
 
-    retcode = GenerateObjectHeader(object, headerFile);
+    retcode = GenerateObjectHeader(object, headerFileStream);
     if(RTN_OK != retcode)
     {
         return retcode;
@@ -261,34 +270,81 @@ static RETCODE GenerateHeader(const OBJECT_SCHEMA& object, const std::string& ou
 
     for(const FIELD_SCHEMA& field : object.fields)
     {
-        retcode = GenerateFieldHeader(field, headerFile);
+        retcode = GenerateFieldHeader(field, headerFileStream);
         if(RTN_OK != retcode)
         {
             return retcode;
         }
     }
 
-    retcode = GenerateObectFooter(object, headerFile);
-
-    LOG_INFO("Generated: ", outputPath);
-
-    return retcode;
-}
-
-size_t CalculateByteBounds(const OBJECT_SCHEMA& object)
-{
-    size_t extraBytes = object.objectSize % CONSTANTS::WORD_SIZE;
-
-    // If this field doesn't end on a word boundary then we will need to add padding
-    if(extraBytes)
+    retcode = GenerateObectFooter(object, headerFileStream);
+    if(RTN_OK != retcode)
     {
-        return false;
+        return retcode;
     }
 
-    return true;
+    LOG_INFO("Generated: ", headerFile);
+
+    return RTN_OK;
 }
 
-RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& outputPath, bool isStrict)
+size_t inline CalculatePadding(const OBJECT_SCHEMA& object, const FIELD_SCHEMA& field)
+{
+    size_t fieldOffset = object.objectSize % field.fieldAlignment;
+    size_t padding = (field.fieldAlignment - fieldOffset) % field.fieldAlignment;
+    return padding;
+}
+
+RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& databaseOutputDirectory)
+{
+    std::string databaseFile = databaseOutputDirectory + object.objectName + CONSTANTS::DB_EXT;
+    size_t fileSize = sizeof(DBHeader) + object.objectSize * object.numberOfRecords;
+
+    LOG_DEBUG(databaseFile, " is: ", fileSize, " bytes");
+
+    int fd = open(databaseFile.c_str(), O_RDWR | O_CREAT, CONSTANTS::RW);
+    if( 0 > fd )
+    {
+        LOG_WARN("Failed to open or create ", databaseFile);
+        return  RTN_NOT_FOUND;
+    }
+
+    if(ftruncate64(fd, fileSize))
+    {
+        LOG_WARN("Failed to truncate ", databaseFile, " to size ", fileSize);
+        return RTN_MALLOC_FAIL;
+    }
+
+    DBHeader dbHeader = { 0 };
+    dbHeader.m_NumRecords = object.numberOfRecords;
+    strncpy(dbHeader.m_ObjectName, object.objectName.c_str(), object.objectName.length());
+
+    pthread_mutexattr_t dbLockAttributes = { 0 };
+    pthread_mutexattr_init(&dbLockAttributes);
+    pthread_mutexattr_setpshared(&dbLockAttributes, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(&dbHeader.m_DBLock, &dbLockAttributes);
+    pthread_mutexattr_destroy(&dbLockAttributes);
+
+    size_t numbytes = write(fd, static_cast<void*>(&dbHeader), sizeof(DBHeader));
+
+    if(sizeof(DBHeader) != numbytes)
+    {
+        LOG_FATAL("Failed to create DB header for: ", object.objectName);
+        return RTN_EOF;
+    }
+
+    if(close(fd))
+    {
+        LOG_WARN("Failed to close ", databaseFile);
+        return RTN_FAIL;
+    }
+
+    LOG_INFO("Generated: ", databaseFile);
+
+    return RTN_OK;
+}
+
+RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& headerOutputPath, const std::string& databaseOutputPath, bool isStrict)
 {
     RETCODE retcode = RTN_OK;
     size_t currentLineNumber = 0;
@@ -328,7 +384,7 @@ RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& outpu
         std::istringstream lineStream(line);
         if(readObject)
         {
-            FIELD_SCHEMA field;
+            FIELD_SCHEMA field = { 0 };
             retcode = ParseField(lineStream, field);
             if(RTN_OK != retcode)
             {
@@ -336,7 +392,23 @@ RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& outpu
                 return retcode;
             }
 
-            object.objectSize += field.fieldSize;
+            size_t padding = CalculatePadding(object, field);
+            if(isStrict)
+            {
+                if(padding)
+                {
+                    LOG_FATAL("Padding of: ",
+                        padding,
+                        " bytes dected for field: ",
+                        field.fieldName,
+                        " on line: ",
+                        currentLineNumber);
+
+                    return RTN_BAD_ARG;
+                }
+            }
+
+            object.objectSize += field.fieldSize + padding;
             object.fields.push_back(field);
         }
         else
@@ -352,7 +424,19 @@ RETCODE GenerateDatabase(const std::string& schemaPath, const std::string& outpu
         }
     }
 
-    retcode = GenerateHeader(object, outputPath);
+    LOG_DEBUG("OBJECT: ", object.objectName, " size is: ", object.objectSize, " bytes per record");
+
+    retcode = GenerateHeader(object, headerOutputPath);
+    if(RTN_OK != retcode)
+    {
+        return retcode;
+    }
+
+    retcode = CreateDatabaseFile(object, databaseOutputPath);
+    if(RTN_OK != retcode)
+    {
+        return retcode;
+    }
 
     return retcode;
 }

@@ -8,12 +8,17 @@
 int main(int argc, char* argv[])
 {
     CLI_StringArgument schemaArg("-s", "Path to schema JSON file", true);
-    CLI_StringArgument outputPathArg("-o", "Path to the output files");
+    CLI_StringArgument headerPathArg("-h", "Path to the header file");
+    CLI_StringArgument databasePathArg("-d", "Path to the database file");
     CLI_FlagArgument strictArg("--strict", "Enforce byte boundaries for compact databases");
 
     Parser parser("dbGenerator", "Generates a qcDB file");
 
-    parser.AddArg(schemaArg).AddArg(outputPathArg).AddArg(strictArg);
+    parser
+        .AddArg(schemaArg)
+        .AddArg(headerPathArg)
+        .AddArg(strictArg)
+        .AddArg(databasePathArg);
 
     RETCODE retcode = parser.ParseCommandLineArguments(argc, argv);
     if(RTN_OK != retcode)
@@ -24,17 +29,30 @@ int main(int argc, char* argv[])
 
     std::string schemaPath = schemaArg.GetValue();
 
-    std::string outputPath;
-    if(outputPathArg.IsInUse())
+    std::string headerOutputPath;
+    if(headerPathArg.IsInUse())
     {
-        outputPath = outputPathArg.GetValue();
+        headerOutputPath = headerPathArg.GetValue();
     }
     else
     {
-        outputPath = CONSTANTS::CURRENT_DIRECTORY;
+        headerOutputPath = CONSTANTS::CURRENT_DIRECTORY;
     }
 
-    retcode = GenerateDatabase(schemaPath, outputPath, strictArg.IsInUse());
+    std::string databaseOutputPath;
+    if(databasePathArg.IsInUse())
+    {
+        databaseOutputPath = databasePathArg.GetValue();
+    }
+    else
+    {
+        databaseOutputPath = CONSTANTS::CURRENT_DIRECTORY;
+    }
+
+    retcode = GenerateDatabase(schemaPath,
+        headerOutputPath,
+        databaseOutputPath,
+        strictArg.IsInUse());
 
     return retcode;
 }

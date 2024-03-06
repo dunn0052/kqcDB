@@ -13,6 +13,9 @@ namespace CONSTANTS
 
     const std::string SCHEMA_EXT = ".skm";
     const std::string HEADER_EXT = ".hh";
+    const std::string DB_EXT = ".qcdb";
+
+    constexpr int RW = 0666;
 }
 
 

@@ -27,8 +27,7 @@ struct FIELD_SCHEMA
     char fieldType;
     size_t numElements;
     size_t fieldSize;
-    size_t fieldOffset;
-    bool isMultiIndex;
+    size_t fieldAlignment;
 };
 
 inline std::istream& operator >> (std::istream& input_stream,
