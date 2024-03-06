@@ -17,8 +17,8 @@ int main(int argc, char* argv[])
     parser
         .AddArg(schemaArg)
         .AddArg(headerPathArg)
-        .AddArg(strictArg)
-        .AddArg(databasePathArg);
+        .AddArg(databasePathArg)
+        .AddArg(strictArg);
 
     RETCODE retcode = parser.ParseCommandLineArguments(argc, argv);
     if(RTN_OK != retcode)
