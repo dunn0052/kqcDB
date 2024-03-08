@@ -33,4 +33,7 @@
     // Timeout
     constexpr RETCODE RTN_TIMEOUT = 0x0080;
 
+    // Lock failed
+    constexpr RETCODE RTN_LOCK_ERROR = 0x0100;
+
 #endif

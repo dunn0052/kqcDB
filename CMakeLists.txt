@@ -9,5 +9,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 set(COMPONENT_DB_GENERATOR dbGenerator)
+set(COMPONENT_DB_TEST testDB)
 
 add_subdirectory(${COMPONENT_DB_GENERATOR})
+add_subdirectory(${COMPONENT_DB_TEST})

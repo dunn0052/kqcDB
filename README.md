@@ -31,6 +31,9 @@ A schema starts with the number, the name, and number of records of an object
 #OBJECT NUMBER, OBJECT NAME, NUMBER OF RECORDS
 2 PERSON 100
 
+The object number is 2, the name is PERSON and there are 100 records. Records
+start at 0.
+
 Then the fields are listed
 #INDEX NAME TYPE SIZE
 0 NAME c 140

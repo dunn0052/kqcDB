@@ -9,8 +9,8 @@
  */
 struct DBHeader
 {
-    pthread_mutex_t m_DBLock;
-    char m_ObjectName[20];
+    pthread_rwlock_t m_DBLock;
+    char m_ObjectName[24];
     size_t m_NumRecords;
     size_t m_LastWritten;
 };

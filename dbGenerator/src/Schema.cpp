@@ -319,12 +319,10 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     dbHeader.m_NumRecords = object.numberOfRecords;
     strncpy(dbHeader.m_ObjectName, object.objectName.c_str(), object.objectName.length());
 
-    pthread_mutexattr_t dbLockAttributes = { 0 };
-    pthread_mutexattr_init(&dbLockAttributes);
-    pthread_mutexattr_setpshared(&dbLockAttributes, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(&dbHeader.m_DBLock, &dbLockAttributes);
-    pthread_mutexattr_destroy(&dbLockAttributes);
-
+    pthread_rwlockattr_t dbLockAttributest = {0};
+    pthread_rwlockattr_init(&dbLockAttributest);
+    pthread_rwlockattr_setpshared(&dbLockAttributest, PTHREAD_PROCESS_SHARED);
+    pthread_rwlock_init(&dbHeader.m_DBLock, &dbLockAttributest);
     size_t numbytes = write(fd, static_cast<void*>(&dbHeader), sizeof(DBHeader));
 
     if(sizeof(DBHeader) != numbytes)
