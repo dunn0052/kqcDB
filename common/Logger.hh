@@ -1,6 +1,8 @@
 #ifndef _LOGGER_HH
 #define _LOGGER_HH
 
+#include <common/OSdefines.hh>
+
 #include <fstream>
 #include <sstream>
 #include <chrono>
@@ -9,7 +11,7 @@
 #include <string.h>
 #include <sys/types.h>
 //#include <unistd.h>
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#ifdef WINDOWS_PLATFORM
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <processthreadsapi.h>

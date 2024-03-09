@@ -1,10 +1,17 @@
 #ifndef __QC_DB_HH
 #define __QC_DB_HH
 
+#include <common/OSdefines.hh>
+
 #include <string>
 #include <fcntl.h>
 #include <sys/stat.h>
+
+#ifdef WINDOWS_PLATFORM
+#include <Windows.h>
+#else
 #include <sys/mman.h>
+#endif
 
 #include <iostream>
 

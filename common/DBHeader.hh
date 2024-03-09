@@ -1,8 +1,13 @@
 #ifndef __DB_HEADER_HH
 #define __DB_HEADER_HH
 
-#include <pthread.h>
 
+#include <common/OSdefines.hh>
+#ifdef WINDOWS_PLATFORM
+using pthread_rwlock_t = bool;
+#else
+#include <pthread.h>
+#endif
 /*
  * NOTE: DBHeader values should be accessed before fields
  *       to remain cache friendly
