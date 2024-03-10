@@ -304,12 +304,12 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     LOG_DEBUG(databaseFile, " is: ", fileSize, " bytes");
 
 #ifdef WINDOWS_PLATFORM
-    HANDLE hFile = CreateFileA(databaseFile.c_str(), 
-                               GENERIC_READ | GENERIC_WRITE, 
-                               0, 
-                               NULL, 
-                               OPEN_ALWAYS, 
-                               FILE_ATTRIBUTE_NORMAL, 
+    HANDLE hFile = CreateFileA(databaseFile.c_str(),
+                               GENERIC_READ | GENERIC_WRITE,
+                               0,
+                               NULL,
+                               OPEN_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL,
                                NULL);
     LARGE_INTEGER li;
     li.QuadPart = fileSize;
@@ -319,7 +319,7 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
         CloseHandle(hFile);
         return RTN_MALLOC_FAIL;
     }
-    
+
     // Truncate the file to the current position, effectively setting the file size
     if (!SetEndOfFile(hFile))
     {

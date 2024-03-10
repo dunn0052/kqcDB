@@ -9,38 +9,47 @@
 #include <sys/wait.h>
 #include <sys/shm.h>
 #include <random>
+#include <algorithm>
 
 int64_t g_TIME = 1;
 int g_NUM_PROCESSES = 4;
+size_t g_NUM_ALTERED_RECORDS = 20;
+std::string g_NAME = "KEVIN";
 
 static void DBWriters(const std::string& dbPath, long long totals[], int index)
 {
     RETCODE retcode = RTN_OK;
     qcDB::dbInterface<CHARACTER> database(dbPath);
 
-    CHARACTER character = { 0 };
-    character.AGE = index;
-
-
     // Set up RNG
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> distribution(0, database.NumberOfRecords() - 1);
 
+    std::vector<std::tuple<size_t, CHARACTER>> characters;
+
+    for(int charIndex = 0; charIndex < g_NUM_ALTERED_RECORDS; charIndex++)
+    {
+        int record = distribution(gen);
+        CHARACTER character = { 0 };
+        character.AGE = index;
+        character.RECORD = record;
+        strcpy(character.NAME, g_NAME.c_str());
+        characters.push_back(std::tuple<size_t, CHARACTER>(record, character));
+    }
+
     bool running = true;
-    int randomRecord = 0;
     std::chrono::_V2::steady_clock::time_point start = std::chrono::steady_clock::now();
     while(running)
     {
-        randomRecord = distribution(gen);
-        retcode = database.WriteObject(randomRecord, character);
+        retcode = database.WriteObjects(characters);
         if(RTN_OK != retcode)
         {
-            LOG_WARN("Error writing record: ", randomRecord, " with error: ", retcode);
+            LOG_WARN("Error writing characters for process: ",index ," with error: ", retcode);
             return;
         }
 
-        (*totals)++;
+        (*totals) += g_NUM_ALTERED_RECORDS;
         if(std::chrono::steady_clock::now() - start > std::chrono::seconds(g_TIME))
         {
             running = false;
@@ -56,27 +65,30 @@ static void DBReader(const std::string& dbPath, long long totals[], int index)
 
     qcDB::dbInterface<CHARACTER> database(dbPath);
 
-    CHARACTER character = { 0 };
-
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> distribution(0, database.NumberOfRecords() - 1);
 
-    int randomRecord = 0;
+    std::vector<std::tuple<size_t, CHARACTER>> characters;
+
+    for(int charIndex = 0; charIndex < g_NUM_ALTERED_RECORDS; charIndex++)
+    {
+        CHARACTER character = { 0 };
+        characters.push_back(std::tuple<size_t, CHARACTER>(distribution(gen), character));
+    }
 
     bool running = true;
     std::chrono::_V2::steady_clock::time_point start = std::chrono::steady_clock::now();
     while(running)
     {
-        randomRecord = distribution(gen);
-        retcode = database.ReadObject(randomRecord, character);
+        retcode = database.ReadObjects(characters);
         if(RTN_OK != retcode)
         {
-            LOG_WARN("Error reading record: ", randomRecord, " with error: ", retcode);
+            LOG_WARN("Error reading characters for process: ", index, " with error: ", retcode);
             return;
         }
 
-        (*totals)++;
+        (*totals) += g_NUM_ALTERED_RECORDS;
         if(std::chrono::steady_clock::now() - start > std::chrono::seconds(g_TIME))
         {
             running = false;
@@ -92,13 +104,17 @@ int main(int argc, char* argv[])
     CLI_StringArgument dbPathArg("-d", "The path to the CHARACTER database file", true);
     CLI_IntArgument timeArg("-s", "Number of seconds to run the test");
     CLI_IntArgument numProcessArg("-p", "Number of each read and write processes");
+    CLI_IntArgument numRecordAltsArg("-r", "Number of altered records");
+    CLI_StringArgument nameArg("-n", "Character name");
 
     Parser parser("charTEST", "Test CHARACTER database");
 
     parser
         .AddArg(dbPathArg)
         .AddArg(timeArg)
-        .AddArg(numProcessArg);
+        .AddArg(numProcessArg)
+        .AddArg(numRecordAltsArg)
+        .AddArg(nameArg);
 
     RETCODE retcode = parser.ParseCommandLineArguments(argc, argv);
 
@@ -123,6 +139,16 @@ int main(int argc, char* argv[])
     // One process for a read and one for write
     g_NUM_PROCESSES *= 2;
 
+    if(numRecordAltsArg.IsInUse())
+    {
+        g_NUM_ALTERED_RECORDS = numRecordAltsArg.GetValue();
+    }
+
+    if(nameArg.IsInUse())
+    {
+        g_NAME = nameArg.GetValue();
+    }
+#if 0
     /// Set up shared memory key on a file
     key_t key = ftok("/home/osboxes/.bashrc", 1);
     if(-1 == key)
@@ -213,6 +239,24 @@ int main(int argc, char* argv[])
     LOG_INFO("Total reads + writes: ", totalReads + totalWrites, " in: ", g_TIME, " second(s)");
 
     shmctl(shm_id, IPC_RMID, 0);
+#endif
+    std::vector<size_t> foundRecords;
+    retcode = database.FindObjects(
+        [](const CHARACTER* character) -> bool
+        {
+            return !strcmp(character->NAME, "KEVIN");
+        },
+        foundRecords
+    );
+
+    if(RTN_OK != retcode)
+    {
+        LOG_WARN("Failed to find due to error: ", retcode);
+        return retcode;
+    }
+
+    double percent = static_cast<double>(foundRecords.size()) / database.NumberOfRecords() * 100;
+    LOG_INFO("Found: ", foundRecords.size(), " matching records ", foundRecords.size(), "/", database.NumberOfRecords(), " (", percent, "%)");
 
     return retcode;
 }

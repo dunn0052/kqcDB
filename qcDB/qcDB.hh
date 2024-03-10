@@ -14,6 +14,8 @@
 #endif
 
 #include <iostream>
+#include <algorithm>
+#include <functional>
 
 #include <common/Retcode.hh>
 #include <common/DBHeader.hh>
@@ -51,6 +53,38 @@ public:
             return RTN_OK;
         }
 
+        RETCODE ReadObjects(std::vector<std::tuple<size_t, object>>& objects)
+        {
+            std::sort(objects.begin(), objects.end(),
+                [](const std::tuple<size_t, object>& a, const std::tuple<size_t, object>& b) {
+                return std::get<0>(a) < std::get<0>(b);
+                });
+
+            int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            for(std::tuple<size_t, object> readObject : objects)
+            {
+                char* p_object = Get(std::get<0>(readObject));
+                if(nullptr == p_object)
+                {
+                    return RTN_NULL_OBJ;
+                }
+                memcpy(&std::get<1>(readObject), p_object, sizeof(readObject));
+            }
+
+            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            return RTN_OK;
+        }
+
         RETCODE WriteObject(size_t record, object& objectWrite)
         {
             char* p_object = Get(record);
@@ -65,7 +99,71 @@ public:
                 return RTN_LOCK_ERROR;
             }
 
+            reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
             memcpy(p_object, &objectWrite, sizeof(object));
+
+            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            return RTN_OK;
+        }
+
+        RETCODE WriteObjects(std::vector<std::tuple<size_t, object>>& objects)
+        {
+            std::sort(objects.begin(), objects.end(),
+                [](const std::tuple<size_t, object>& a, const std::tuple<size_t, object>& b) {
+                return std::get<0>(a) < std::get<0>(b);
+                });
+
+            int lockError = pthread_rwlock_wrlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            for(std::tuple<size_t, object> writeObject : objects)
+            {
+                char* p_object = Get(std::get<0>(writeObject));
+                if(nullptr == p_object)
+                {
+                    return RTN_NULL_OBJ;
+                }
+                memcpy(p_object, &std::get<1>(writeObject), sizeof(writeObject));
+            }
+
+            reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
+
+            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            return RTN_OK;
+        }
+
+        using Predicate = std::function<bool(const object* currentObject)>;
+        RETCODE FindObjects(Predicate predicate, std::vector<size_t>& out_MatchingObjects)
+        {
+            int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
+            for(size_t record = 0; record < NumberOfRecords(); record++)
+            {
+                if(predicate(currentObject))
+                {
+                    out_MatchingObjects.push_back(record);
+                }
+
+                currentObject++;
+            }
 
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
             if(0 != lockError)
