@@ -18,6 +18,7 @@ struct DBHeader
     char m_ObjectName[24];
     size_t m_NumRecords;
     size_t m_LastWritten;
+    size_t m_Size;
 };
 
 #endif
