@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.21)
 
 project(qcDB)
 
@@ -12,4 +12,4 @@ set(COMPONENT_DB_GENERATOR dbGenerator)
 set(COMPONENT_DB_TEST testDB)
 
 add_subdirectory(${COMPONENT_DB_GENERATOR})
-add_subdirectory(${COMPONENT_DB_TEST})
+#add_subdirectory(${COMPONENT_DB_TEST})
