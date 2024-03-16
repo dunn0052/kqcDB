@@ -230,13 +230,13 @@ public:
             CloseHandle(hMapFile);
 
             // Map the file to memory
-            m_DBAddress = MapViewOfFile(
+            m_DBAddress = static_cast<char*>(MapViewOfFile(
                 hMapFile,                       // Handle to file mapping object
                 FILE_MAP_ALL_ACCESS,            // Access mode
                 0,                              // High-order 32 bits of file offset
                 0,                              // Low-order 32 bits of file offset
                 0                               // Number of bytes to map (0 for all)
-            );
+            ));
 
             if (nullptr == m_DBAddress)
             {
@@ -314,7 +314,7 @@ protected:
     bool m_IsOpen;
     size_t m_Size;
     size_t m_NumRecords;
-    void* m_DBAddress;
+    char* m_DBAddress;
 
     static constexpr int INVALID_FD = 0;
 
