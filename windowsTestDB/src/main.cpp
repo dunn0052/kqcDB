@@ -1,10 +1,12 @@
 #include <common/CLI.hh>
 #include <qcDB/qcDB.hh>
-#include <dbHeaders/index.hh>
+#include <dbHeaders/INDEX.hh>
+
+std::string g_NAME = "KEVIN";
 
 int main(int argc, char* argv[])
 {
-    CLI_StringArgument dbPathArg("-d", "The path to the CHARACTER database file", true);
+    CLI_StringArgument dbPathArg("-d", "The path to the INDEX database file", true);
     CLI_IntArgument timeArg("-s", "Number of seconds to run the test");
     CLI_IntArgument numProcessArg("-p", "Number of each read and write processes");
     CLI_IntArgument numRecordAltsArg("-r", "Number of altered records");
@@ -26,8 +28,17 @@ int main(int argc, char* argv[])
         parser.Usage();
         return retcode;
     }
-    
+
+    if (nameArg.IsInUse())
+    {
+        g_NAME = nameArg.GetValue();
+    }
+
     qcDB::dbInterface<INDEX> database(dbPathArg.GetValue());
+
+    INDEX entry = { 0 };
+    strcpy(entry.PATH, g_NAME.c_str());
+    database.WriteObject(1, entry);
 
     return retcode;
 }

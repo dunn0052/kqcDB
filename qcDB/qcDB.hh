@@ -35,18 +35,19 @@ public:
                 return RTN_NULL_OBJ;
             }
 
-            int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = LockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
+
 
             memcpy(&out_object, p_object, sizeof(object));
 
-            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             return RTN_OK;
@@ -59,11 +60,12 @@ public:
                 return std::get<0>(a) < std::get<0>(b);
                 });
 
-            int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = LockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
+
 
             for(std::tuple<size_t, object> readObject : objects)
             {
@@ -75,10 +77,10 @@ public:
                 memcpy(&std::get<1>(readObject), p_object, sizeof(readObject));
             }
 
-            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             return RTN_OK;
@@ -86,25 +88,26 @@ public:
 
         RETCODE WriteObject(size_t record, object& objectWrite)
         {
+            RETCODE retcode = RTN_OK;
             char* p_object = Get(record);
             if(nullptr == p_object)
             {
                 return RTN_NULL_OBJ;
             }
 
-            int lockError = pthread_rwlock_wrlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = LockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
             memcpy(p_object, &objectWrite, sizeof(object));
 
-            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             return RTN_OK;
@@ -112,15 +115,17 @@ public:
 
         RETCODE WriteObjects(std::vector<std::tuple<size_t, object>>& objects)
         {
+
+            RETCODE retcode = RTN_OK;
             std::sort(objects.begin(), objects.end(),
                 [](const std::tuple<size_t, object>& a, const std::tuple<size_t, object>& b) {
                 return std::get<0>(a) < std::get<0>(b);
                 });
 
-            int lockError = pthread_rwlock_wrlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = LockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             for(std::tuple<size_t, object> writeObject : objects)
@@ -134,11 +139,11 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
-
-            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             return RTN_OK;
@@ -147,11 +152,12 @@ public:
         using Predicate = std::function<bool(const object* currentObject)>;
         RETCODE FindObjects(Predicate predicate, std::vector<size_t>& out_MatchingObjects)
         {
-            int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = LockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
+
 
             const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
             for(size_t record = 0; record < NumberOfRecords(); record++)
@@ -164,10 +170,10 @@ public:
                 currentObject++;
             }
 
-            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
-            if(0 != lockError)
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
             {
-                return RTN_LOCK_ERROR;
+                return retcode;
             }
 
             return RTN_OK;
@@ -185,7 +191,10 @@ public:
 
         dbInterface(const std::string& dbPath) :
             m_IsOpen(false), m_Size(0),
-            m_DBAddress(nullptr)
+            m_DBAddress(nullptr), m_NumRecords(0)
+#ifdef WINDOWS_PLATFORM
+            , m_Mutex(INVALID_HANDLE_VALUE)
+#endif
         {
 #ifdef WINDOWS_PLATFORM
             HANDLE hFile = CreateFileA(
@@ -203,8 +212,8 @@ public:
             }
 
             // Get the file size
-            DWORD dwFileSize = GetFileSize(hFile, NULL);
-            if (dwFileSize == INVALID_FILE_SIZE) {
+            m_Size = static_cast<size_t>(GetFileSize(hFile, NULL));
+            if (m_Size == INVALID_FILE_SIZE) {
                 CloseHandle(hFile);
                 return;
             }
@@ -226,8 +235,6 @@ public:
             // Close the file handle, as it's not needed anymore
             CloseHandle(hFile);
 
-            // Close the file mapping handle
-            CloseHandle(hMapFile);
 
             // Map the file to memory
             m_DBAddress = static_cast<char*>(MapViewOfFile(
@@ -237,6 +244,9 @@ public:
                 0,                              // Low-order 32 bits of file offset
                 0                               // Number of bytes to map (0 for all)
             ));
+
+            // Close the file mapping handle
+            CloseHandle(hMapFile);
 
             if (nullptr == m_DBAddress)
             {
@@ -289,32 +299,74 @@ public:
 
 protected:
 
-        char* Get(const size_t record)
+    RETCODE LockDB(void)
+    {
+#ifdef WINDOWS_PLATFORM
+        m_Mutex = CreateMutexA(NULL, FALSE, "MutexForFileLock");
+        if (nullptr == m_Mutex)
         {
-            if(NumberOfRecords() - 1 < record)
-            {
-                return nullptr;
-            }
-
-            if(!m_IsOpen || nullptr == m_DBAddress)
-            {
-                return nullptr;
-            }
-
-            // Record off by 1 adjustment
-            size_t byte_index = sizeof(DBHeader) + sizeof(object) * record;
-            if(m_Size < byte_index)
-            {
-                return nullptr;
-            }
-
-            return m_DBAddress + byte_index;
+            return RTN_LOCK_ERROR;
         }
+#else
+
+        int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+        if (0 != lockError)
+        {
+            return RTN_LOCK_ERROR;
+        }
+#endif
+
+        return RTN_OK;
+    }
+
+    RETCODE UnlockDB(void)
+    {
+#ifdef WINDOWS_PLATFORM
+        if (ReleaseMutex(m_Mutex))
+        {
+            return RTN_LOCK_ERROR;
+        }
+#else
+        lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+        if (0 != lockError)
+        {
+            return RTN_LOCK_ERROR;
+        }
+#endif
+
+    return RTN_OK;
+    }
+    char* Get(const size_t record)
+    {
+        if(NumberOfRecords() - 1 < record)
+        {
+            return nullptr;
+        }
+
+        if(!m_IsOpen || nullptr == m_DBAddress)
+        {
+            return nullptr;
+        }
+
+        // Record off by 1 adjustment
+        size_t byte_index = sizeof(DBHeader) + sizeof(object) * record;
+        if(m_Size < byte_index)
+        {
+            return nullptr;
+        }
+
+        return m_DBAddress + byte_index;
+    }
 
     bool m_IsOpen;
     size_t m_Size;
     size_t m_NumRecords;
     char* m_DBAddress;
+
+#ifdef WINDOWS_PLATFORM
+    HANDLE m_Mutex;
+#else
+#endif
 
     static constexpr int INVALID_FD = 0;
 
