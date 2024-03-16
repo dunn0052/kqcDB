@@ -12,7 +12,6 @@
 #else
 #include <sys/mman.h>
 #endif
-
 #include <iostream>
 #include <algorithm>
 #include <functional>
@@ -188,6 +187,62 @@ public:
             m_IsOpen(false), m_Size(0),
             m_DBAddress(nullptr)
         {
+#ifdef WINDOWS_PLATFORM
+            HANDLE hFile = CreateFileA(
+                static_cast<LPCSTR>(dbPath.c_str()), // File name
+                GENERIC_READ | GENERIC_WRITE,        // Access mode
+                FILE_SHARE_READ,                     // Share mode
+                NULL,                                // Security attributes
+                OPEN_ALWAYS,                         // How to create
+                FILE_ATTRIBUTE_NORMAL,               // File attributes
+                NULL                                 // Handle to template file
+            );
+
+            if (hFile == INVALID_HANDLE_VALUE) {
+                return;
+            }
+
+            // Get the file size
+            DWORD dwFileSize = GetFileSize(hFile, NULL);
+            if (dwFileSize == INVALID_FILE_SIZE) {
+                CloseHandle(hFile);
+                return;
+            }
+
+            HANDLE hMapFile = CreateFileMappingA(
+                hFile,                          // File handle
+                NULL,                           // Security attributes
+                PAGE_READWRITE,                 // Protection
+                0,                              // High-order 32 bits of file size
+                0,                              // Low-order 32 bits of file size
+                NULL                            // Name of file-mapping object
+            );
+
+            if (hMapFile == NULL) {
+                CloseHandle(hFile);
+                return;
+            }
+
+            // Close the file handle, as it's not needed anymore
+            CloseHandle(hFile);
+
+            // Close the file mapping handle
+            CloseHandle(hMapFile);
+
+            // Map the file to memory
+            m_DBAddress = MapViewOfFile(
+                hMapFile,                       // Handle to file mapping object
+                FILE_MAP_ALL_ACCESS,            // Access mode
+                0,                              // High-order 32 bits of file offset
+                0,                              // Low-order 32 bits of file offset
+                0                               // Number of bytes to map (0 for all)
+            );
+
+            if (nullptr == m_DBAddress)
+            {
+                return;
+            }
+#else
             int fd = open(dbPath.c_str(), O_RDWR);
             if(INVALID_FD > fd)
             {
@@ -210,6 +265,7 @@ public:
                 return;
             }
 
+#endif
             m_NumRecords = reinterpret_cast<DBHeader*>(m_DBAddress)->m_NumRecords;
 
             m_IsOpen = true;
@@ -217,12 +273,18 @@ public:
 
         ~dbInterface(void)
         {
+#ifdef WINDOWS_PLATFORM
+            // Unmap the file view
+            UnmapViewOfFile(m_DBAddress);
+
+    #else
             int error = munmap(m_DBAddress, m_Size);
             if(0 == error)
             {
                 // Nothing much you can do in this case..
                 m_IsOpen = false;
             }
+#endif
         }
 
 protected:
@@ -252,7 +314,7 @@ protected:
     bool m_IsOpen;
     size_t m_Size;
     size_t m_NumRecords;
-    char* m_DBAddress;
+    void* m_DBAddress;
 
     static constexpr int INVALID_FD = 0;
 

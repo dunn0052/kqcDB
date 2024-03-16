@@ -1,9 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
-project(${COMPONENT_DB_GENERATOR})
+project(${COMPONENT_WINDOWS_DB_TEST})
 
 set(SRC
     src/main.cpp
-    src/Schema.cpp
 )
 
 add_executable(${PROJECT_NAME}

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.16)
 
 project(qcDB)
 
@@ -10,6 +10,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 set(COMPONENT_DB_GENERATOR dbGenerator)
 set(COMPONENT_DB_TEST testDB)
+set(COMPONENT_WINDOWS_DB_TEST windowsTestDB)
 
 add_subdirectory(${COMPONENT_DB_GENERATOR})
 #add_subdirectory(${COMPONENT_DB_TEST})
+add_subdirectory(${COMPONENT_WINDOWS_DB_TEST})
