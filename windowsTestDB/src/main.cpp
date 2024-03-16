@@ -43,8 +43,14 @@ int main(int argc, char* argv[])
         LOG_FATAL("Could not write name to DB object due to error:", ErrorString(error));
         return error;
     }
-    
-    database.WriteObject(1, entry);
+
+    retcode = database.WriteObject(0, entry);
+    if(RTN_OK != retcode)
+    {
+        LOG_FATAL("Could not write: ", g_NAME, " to database");
+    }
+
+    LOG_INFO("Wrote: \"", g_NAME, "\" to: ", dbPathArg.GetValue());
 
     return retcode;
 }
