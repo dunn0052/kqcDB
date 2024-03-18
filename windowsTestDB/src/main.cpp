@@ -37,8 +37,20 @@ int main(int argc, char* argv[])
     qcDB::dbInterface<INDEX> database(dbPathArg.GetValue());
 
     INDEX entry = { 0 };
-    strcpy(entry.PATH, g_NAME.c_str());
-    database.WriteObject(1, entry);
+    errno_t error = strncpy_s(entry.PATH, g_NAME.c_str(), g_NAME.length());
+    if(error)
+    {
+        LOG_FATAL("Could not write name to DB object due to error:", ErrorString(error));
+        return error;
+    }
+
+    retcode = database.WriteObject(0, entry);
+    if(RTN_OK != retcode)
+    {
+        LOG_FATAL("Could not write: ", g_NAME, " to database");
+    }
+
+    LOG_INFO("Wrote: \"", g_NAME, "\" to: ", dbPathArg.GetValue());
 
     return retcode;
 }
