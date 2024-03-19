@@ -315,7 +315,10 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     li.QuadPart = fileSize;
     if (!SetFilePointerEx(hFile, li, NULL, FILE_BEGIN))
     {
-        LOG_FATAL("Could not set file pointer for file: ", databaseFile, " due to error: ", ErrorString(errno));
+        LOG_FATAL("Could not set file pointer for file: ",
+            databaseFile,
+            " due to error: ",
+            ErrorString(errno));
         CloseHandle(hFile);
         return RTN_MALLOC_FAIL;
     }
@@ -323,7 +326,10 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     // Truncate the file to the current position, effectively setting the file size
     if (!SetEndOfFile(hFile))
     {
-        LOG_FATAL("Failed to truncate file: ", databaseFile, " due to error: ", ErrorString(errno));
+        LOG_FATAL("Failed to truncate file: ",
+            databaseFile,
+            " due to error: ",
+            ErrorString(errno));
         CloseHandle(hFile);
         return RTN_EOF;
     }
@@ -331,7 +337,10 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     li.QuadPart = 0;
     if (!SetFilePointerEx(hFile, li, NULL, FILE_BEGIN))
     {
-        LOG_FATAL("Could not reset pointer for file: ", databaseFile, " due to error: ", ErrorString(errno));
+        LOG_FATAL("Could not reset pointer for file: ",
+            databaseFile,
+            " due to error: ",
+            ErrorString(errno));
         CloseHandle(hFile);
         return RTN_MALLOC_FAIL;
     }
@@ -359,20 +368,27 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
     int error = strncpy_s(dbHeader.m_ObjectName, object.objectName.c_str(), object.objectName.length());
     if(error)
     {
-        LOG_FATAL("Could not write object name: ", object.objectName, " to DBHeader due to error: ", ErrorString(error));
+        LOG_FATAL("Could not write object name: ",
+            object.objectName,
+            " to DBHeader due to error: ",
+            ErrorString(error));
     }
 
     DWORD numbytes = 0;
     if (!WriteFile(hFile, &dbHeader, sizeof(DBHeader), &numbytes, NULL))
     {
-        LOG_FATAL("Failed to write DBHeader to file: ", databaseFile, " due to error: ", ErrorString(errno));
+        LOG_FATAL("Failed to write DBHeader to file: ",
+            databaseFile,
+            " due to error: ",
+            ErrorString(errno));
         CloseHandle(hFile);
         return RTN_EOF;
     }
 
     if(sizeof(DBHeader) != numbytes)
     {
-        LOG_FATAL("Failed to create DB header for: ", object.objectName);
+        LOG_FATAL("Could not write DBHeader for: ",
+            object.objectName);
         CloseHandle(hFile);
         return RTN_EOF;
     }
@@ -397,7 +413,10 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
 #ifdef WINDOWS_PLATFORM
     if(!CloseHandle(hFile))
     {
-        LOG_WARN("Failed to close ", databaseFile);
+        LOG_WARN("Failed to close ",
+            databaseFile,
+            " due to error: ",
+            ErrorString(GetLastError()));
         return RTN_FAIL;
     }
 #else
