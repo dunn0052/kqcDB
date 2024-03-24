@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+#include <common/OSdefines.hh>
 
 enum class FIELD_TYPE : char
 {
@@ -13,6 +14,9 @@ enum class FIELD_TYPE : char
     ULONG = 'L',
     BOOL = '?',
     CHAR = 'c',
+#ifdef WINDOWS_PLATFORM
+    WCHAR = 'w',
+#endif
     BYTE = 'b',
     PADDING = 'x'
 };

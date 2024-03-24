@@ -49,6 +49,14 @@ static RETCODE ParseField(std::istringstream& lineStream, FIELD_SCHEMA& out_fiel
             out_field.fieldAlignment = alignof(char);
             break;
         }
+#ifdef WINDOWS_PLATFORM
+        case FIELD_TYPE::WCHAR:
+        {
+            out_field.fieldSize = sizeof(wchar_t);
+            out_field.fieldAlignment = alignof(wchar_t);
+            break;
+        }
+#endif
         case FIELD_TYPE::BYTE:
         {
             out_field.fieldSize = sizeof(unsigned char);
@@ -167,6 +175,13 @@ static RETCODE GenerateFieldHeader(const FIELD_SCHEMA& field, std::ofstream& hea
             dataType = "char";
             break;
         }
+#ifdef WINDOWS_PLATFORM
+        case FIELD_TYPE::WCHAR:
+        {
+            dataType = "wchar_t";
+            break;
+        }
+#endif
         case FIELD_TYPE::BYTE:
         {
             dataType = "unsigned char";
@@ -426,6 +441,7 @@ RETCODE CreateDatabaseFile(const OBJECT_SCHEMA& object, const std::string& datab
         return RTN_FAIL;
     }
 #endif
+
 
     LOG_INFO("Generated: ", databaseFile);
 
