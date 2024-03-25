@@ -15,6 +15,7 @@
 #include <iostream>
 #include <algorithm>
 #include <functional>
+#include <thread>
 
 #include <common/Retcode.hh>
 #include <common/DBHeader.hh>
@@ -29,6 +30,7 @@ public:
 
         RETCODE ReadObject(size_t record, object& out_object)
         {
+            RETCODE retcode = RTN_OK;
             char* p_object = Get(record);
             if(nullptr == p_object)
             {
@@ -40,7 +42,6 @@ public:
             {
                 return retcode;
             }
-
 
             memcpy(&out_object, p_object, sizeof(object));
 
@@ -102,12 +103,61 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+            }
+
             memcpy(p_object, &objectWrite, sizeof(object));
 
             retcode = UnlockDB();
             if (RTN_OK != retcode)
             {
                 return retcode;
+            }
+
+            return RTN_OK;
+        }
+
+        RETCODE WriteObject(object& objectWrite)
+        {
+            RETCODE retcode = RTN_OK;
+            object emptyObject = { 0 };
+            retcode = LockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
+            for (; record < NumberOfRecords(); record++)
+            {
+                if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
+                {
+                    reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+                    memcpy(currentObject, &objectWrite, sizeof(object));
+
+                    if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+                    {
+                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                    }
+
+                    break;
+                }
+
+                currentObject++;
+            }
+
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            if(NumberOfRecords() == record)
+            {
+                return RTN_NOT_FOUND;
             }
 
             return RTN_OK;
@@ -139,7 +189,12 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
-            
+
+            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < std::get<0>(objects.back()))
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = std::get<0>(objects.back());
+            }
+
             retcode = UnlockDB();
             if (RTN_OK != retcode)
             {
@@ -149,22 +204,153 @@ public:
             return RTN_OK;
         }
 
-        using Predicate = std::function<bool(const object* currentObject)>;
-        RETCODE FindObjects(Predicate predicate, std::vector<size_t>& out_MatchingObjects)
+        RETCODE WriteObjects(std::vector<object>& objects)
         {
+            RETCODE retcode = RTN_OK;
+            const object emptyObject = { 0 };
+            auto objectsIterator = objects.begin();
+
             retcode = LockDB();
             if (RTN_OK != retcode)
             {
                 return retcode;
             }
 
+            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
+            for (; record < NumberOfRecords(); record++)
+            {
+                if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
+                {
+                    if (objectsIterator == objects.end())
+                    {
+                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+                        break;
+                    }
+
+                    memcpy(currentObject, &(*objectsIterator), sizeof(object));
+
+                    ++objectsIterator;
+                }
+
+                currentObject++;
+            }
+
+            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+            }
+
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            if (objectsIterator != objects.end())
+            {
+                return RTN_EOF;
+            }
+
+            return RTN_OK;
+        }
+
+        RETCODE DeleteObject(size_t record)
+        {
+            RETCODE retcode = RTN_OK;
+            object deletedObject = { 0 };
+            char* p_object = Get(record);
+            if (nullptr == p_object)
+            {
+                return RTN_NULL_OBJ;
+            }
+
+            retcode = LockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+
+            memset(p_object, 0, sizeof(object));
+
+            // If the deleted record was the last one, find the next last record
+            if (size == record)
+            {
+                for (; p_object != m_DBAddress; p_object -= sizeof(object))
+                {
+                    --record;
+                    if (std::memcmp(p_object, &deletedObject, sizeof(object)) != 0)
+                    {
+                        break;
+                    }
+                }
+
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+            }
+
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            return RTN_OK;
+        }
+
+        RETCODE Clear(void)
+        {
+            RETCODE retcode = RTN_OK;
+            if (m_IsOpen)
+            {
+                retcode = LockDB();
+                if (RTN_OK != retcode)
+                {
+                    return retcode;
+                }
+
+                size_t dbSize = reinterpret_cast<DBHeader*>(m_DBAddress)->m_NumRecords * sizeof(object);
+                object* start = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
+
+                memset(start, 0, dbSize);
+
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = 0;
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = 0;
+
+                retcode = UnlockDB();
+                if (RTN_OK != retcode)
+                {
+                    return retcode;
+                }
+
+                return RTN_OK;
+            }
+
+            return RTN_MALLOC_FAIL;
+        }
+
+        using Predicate = std::function<bool(const object* currentObject)>;
+
+        RETCODE FindFirstOf(Predicate predicate, size_t& out_Record)
+        {
+            RETCODE retcode = RTN_OK;
+            bool found = false;
+            retcode = LockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
 
             const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
-            for(size_t record = 0; record < NumberOfRecords(); record++)
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            size_t record = 0;
+            for (record = 0; record < size; record++)
             {
-                if(predicate(currentObject))
+                if (predicate(currentObject))
                 {
-                    out_MatchingObjects.push_back(record);
+                    out_Record = record;
+                    found = true;
+                    break;
                 }
 
                 currentObject++;
@@ -176,17 +362,111 @@ public:
                 return retcode;
             }
 
+            if(!found)
+            {
+                return RTN_NOT_FOUND;
+            }
+
+            return RTN_OK;
+        }
+
+        static void FinderThread(Predicate predicate, const object* currentObject, size_t numRecords, std::vector<object>& results)
+        {
+            for (size_t record = 0; record < numRecords; record++)
+            {
+                if (predicate(++currentObject))
+                {
+                    results.push_back(*currentObject);
+                }
+            }
+        }
+
+        RETCODE FindObjects(Predicate predicate, std::vector<object>& out_MatchingObjects)
+        {
+            RETCODE retcode = RTN_OK;
+            // Number of threads /2 so we don't completely lock up the CPU
+#ifdef WINDOWS_PLATFORM
+            size_t numThreads = std::thread::hardware_concurrency() / 2;
+#else
+            size_t numThreads = sysconf(_SC_NPROCESSORS_ONLN) / 2;
+#endif
+            std::vector<std::thread> threads;
+            std::vector<std::vector<object>> results(numThreads);
+
+            retcode = LockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            size_t segmentSize = size / numThreads;
+
+            for (size_t threadIndex = 0; threadIndex < numThreads - 1; threadIndex++)
+            {
+                threads.emplace_back(FinderThread, predicate, currentObject, segmentSize, std::ref(results[threadIndex]));
+                currentObject += segmentSize;
+            }
+
+            threads.emplace_back(FinderThread, predicate, currentObject, size - ((numThreads - 1) * segmentSize), std::ref(results[numThreads - 1]));
+
+            for (std::thread& thread : threads)
+            {
+                thread.join();
+            }
+
+            retcode = UnlockDB();
+            if (RTN_OK != retcode)
+            {
+                return retcode;
+            }
+
+            for (std::vector<object>& matches : results)
+            {
+                for (object& match : matches)
+                {
+                    out_MatchingObjects.push_back(match);
+                }
+            }
+
             return RTN_OK;
         }
 
         inline size_t NumberOfRecords(void)
         {
-            if(m_IsOpen)
+            if (m_IsOpen)
             {
                 return m_NumRecords;
             }
 
             return 0;
+        }
+
+        inline size_t LastWrittenRecord(void)
+        {
+            RETCODE retcode = RTN_OK;
+            size_t lastWittenRecord = 0;
+
+            if (m_IsOpen)
+            {
+                retcode = LockDB();
+                if (RTN_OK != retcode)
+                {
+                    return retcode;
+                }
+
+                lastWittenRecord = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+
+                retcode = UnlockDB();
+                if (RTN_OK != retcode)
+                {
+                    return retcode;
+                }
+
+            }
+
+            return lastWittenRecord;
         }
 
         dbInterface(const std::string& dbPath) :
@@ -200,14 +480,15 @@ public:
             HANDLE hFile = CreateFileA(
                 static_cast<LPCSTR>(dbPath.c_str()), // File name
                 GENERIC_READ | GENERIC_WRITE,        // Access mode
-                FILE_SHARE_READ,                     // Share mode
+                FILE_SHARE_READ | FILE_SHARE_WRITE,  // Share mode
                 NULL,                                // Security attributes
-                OPEN_ALWAYS,                         // How to create
+                OPEN_EXISTING,                         // How to create
                 FILE_ATTRIBUTE_NORMAL,               // File attributes
                 NULL                                 // Handle to template file
             );
 
-            if (hFile == INVALID_HANDLE_VALUE) {
+            if (hFile == INVALID_HANDLE_VALUE)
+            {
                 return;
             }
 
