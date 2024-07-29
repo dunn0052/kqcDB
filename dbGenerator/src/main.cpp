@@ -7,7 +7,7 @@
 
 int main(int argc, char* argv[])
 {
-    CLI_StringArgument schemaArg("-s", "Path to schema JSON file", true);
+    CLI_StringArgument schemaArg("-s", "Path to schema (.skm) file", true);
     CLI_StringArgument headerPathArg("-h", "Path to the header file");
     CLI_StringArgument databasePathArg("-d", "Path to the database file");
     CLI_FlagArgument strictArg("--strict", "Enforce byte boundaries for compact databases");
